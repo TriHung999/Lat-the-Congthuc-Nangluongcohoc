@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ghép 3 mảnh — Vật Lý</title>
+<style>
+:root{
+  --bg:#eef6ff; --panel:#ffffff; --accent:#06b6d4; --success:#16a34a; --danger:#ef4444;
+  --tile-shadow: 0 10px 30px rgba(2,6,23,.08); --radius:12px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Roboto,Arial;background:linear-gradient(180deg,#f0f8ff,#fbfdff);color:#022233}
+
+/* START modal (center) */
+#startModal{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(2,6,23,.08);z-index:9999;
+}
+.startCard{background:var(--panel);padding:20px;border-radius:16px;max-width:520px;width:100%;text-align:center;box-shadow:0 18px 60px rgba(2,6,23,.12)}
+.startCard h1{margin:6px 0 8px;font-size:20px}
+.inputName{width:86%;padding:12px;border-radius:10px;border:1px solid #e6eef7;font-size:16px;margin-top:10px}
+
+/* Top bar */
+.topbar{max-width:1100px;margin:12px auto;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px}
+.infoGroup{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.status{background:var(--panel);padding:8px 12px;border-radius:10px;box-shadow:var(--tile-shadow);font-weight:700}
+
+/* Board responsive */
+.boardWrap{max-width:1200px;margin:8px auto;padding:12px}
+.board{display:grid;gap:10px}
+@media (min-width:1100px){ .board{grid-template-columns:repeat(10,1fr)} }
+@media (max-width:1099px) and (min-width:700px){ .board{grid-template-columns:repeat(8,1fr)} }
+@media (max-width:699px){ .board{grid-template-columns:repeat(5,1fr)} }
+
+/* Tile & flip */
+.slot{height:86px;border-radius:var(--radius);perspective:900px;position:relative}
+.card{width:100%;height:100%;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.2,.9,.3,1);cursor:pointer;border-radius:var(--radius)}
+.card.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:inherit;backface-visibility:hidden;padding:8px}
+.front{background:linear-gradient(180deg,#dff3ff,#cdebff);box-shadow:var(--tile-shadow);font-weight:900;font-size:22px;color:#044e54}
+.back{background:linear-gradient(180deg,#ffffff,#f7fbff);transform:rotateY(180deg);box-shadow:var(--tile-shadow);flex-direction:column;gap:4px;text-align:center}
+.icon{font-size:20px}
+.partText{font-weight:800;font-size:15px;color:#05343a}
+.label{font-size:11px;color:#516076}
+
+/* cleared / tick */
+.cleared{display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#f0fff4,#ecfdf5);height:100%;border-radius:inherit;box-shadow:var(--tile-shadow);transition:transform .3s,opacity .3s}
+.cleared .tick{font-size:26px;color:var(--success);font-weight:900}
+.cleared.pop{animation:popTick .45s cubic-bezier(.2,.9,.3,1) both}
+@keyframes popTick{0%{transform:scale(.8);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1);opacity:1}}
+
+/* vanish animation on back then replaced by cleared */
+.back.vanish{animation:vanishBack .45s forwards}
+@keyframes vanishBack{0%{transform:rotateY(180deg) translateY(0) scale(1);opacity:1}60%{transform:rotateY(180deg) translateY(-6px) scale(1.06)}100%{transform:rotateY(180deg) translateY(-20px) scale(.0);opacity:0}}
+
+/* popup */
+.popupOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.35);z-index:9999}
+.popup{background:var(--panel);padding:18px;border-radius:14px;max-width:460px;width:92%;text-align:center;box-shadow:0 18px 60px rgba(2,6,23,.2)}
+.popup .title{font-size:22px;font-weight:900;margin-bottom:6px}
+.btn{padding:10px 14px;border-radius:10px;border:none;background:var(--accent);color:white;font-weight:800;cursor:pointer}
+.btn.secondary{background:#94a3b8}
+
+/* small screens */
+@media(max-width:420px){
+  .front{font-size:20px}
+  .slot{height:72px}
+  .icon{font-size:18px}
+}
+.footerNote{max-width:1200px;margin:10px auto;text-align:center;color:#4b647a;font-size:13px;padding-bottom:16px}
+</style>
+</head>
+<body>
+
+<!-- START modal -->
+<div id="startModal" role="dialog" aria-modal="true">
+  <div class="startCard">
+    <h1>Ghép 3 mảnh — Vật Lý</h1>
+    <p style="color:#55677c">Nhập tên / biệt danh trước khi bắt đầu.</p>
+    <input id="playerInput" class="inputName" placeholder="Ví dụ: An, Hùng, Lan..." maxlength="24" />
+    <div style="margin-top:12px;">
+      <button id="startBtn" class="btn">Bắt đầu trò chơi</button>
+    </div>
+    <p class="muted" style="margin-top:10px;font-size:13px;color:#6b7f8f">
+      50 ô (48 mảnh + 2 ô trống). Lật tối đa 3 mảnh mỗi lượt. Ô trống không biến mất, chỉ hiển thị ✓ khi lật.
+    </p>
+  </div>
+</div>
+
+<!-- Game top -->
+<div class="topbar" aria-hidden="true">
+  <div class="infoGroup">
+    <div class="status">Người chơi: <span id="displayName">—</span></div>
+    <div class="status">Thời gian: <span id="timer">05:00</span></div>
+    <div class="status">Ghép đúng: <span id="scoreCount">0</span></div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button id="restartBtn" class="btn secondary">Chơi lại</button>
+    <div class="status">Best: <span id="bestDisplay">—</span></div>
+  </div>
+</div>
+
+<!-- Board -->
+<div class="boardWrap">
+  <div id="board" class="board" role="grid" aria-live="polite"></div>
+</div>
+<div class="footerNote">Hoàn thành càng nhanh - điểm bonus càng cao. Có rung nhẹ (haptics) trên thiết bị hỗ trợ.</div>
+
+<!-- popup -->
+<div id="popupOverlay" class="popupOverlay" role="dialog" aria-modal="true">
+  <div class="popup">
+    <div id="popupTitle" class="title">Bạn thắng! 🎉</div>
+    <div id="popupMsg" style="color:#425467;margin-bottom:10px">Thời gian còn lại: — | Ghép đúng: — | Điểm: —</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="playAgainBtn" class="btn">Chơi lại</button>
+      <button id="closePopupBtn" class="btn secondary">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ======================= GAME CONFIG ======================= */
+// types and parts (partIndex 0,1,2)
+const TYPES = [
+  { id:'dongna', label:'Động năng', icon:'⚡', parts:["Wđ =","½ m","v²"] },
+  { id:'the',    label:'Thế năng', icon:'🪨', parts:["Wt =","10 m","h"] },
+  { id:'cong',   label:'Công cơ học', icon:'🔧', parts:["A =","F","s"] },
+  { id:'congsuat',label:'Công suất', icon:'⚙️', parts:["P =","A","1/t"] }
+];
+const REPEAT_FULL_SET = 4; // 4 repeats -> 48 pieces
+const EXTRA_EMPTY = 2; // two empty tiles
+const TOTAL = 50;
+const MATCH_POINTS = 1000; // per match base
+const TIME_BONUS_MAX = 2000; // scaled by remaining/total
+
+/* ======================= STATE ======================= */
+let tiles = []; // array of {type,label,icon,part,partIndex,isEmpty,cleared}
+let flipped = []; // indices (max 3)
+let correctMatches = 0;
+let timer = null;
+let remaining = 300; // seconds
+let playerName = '';
+let audioCtx = null; // AudioContext will be created/resumed on first user gesture
+
+/* ========== UI elements ========== */
+const startModal = document.getElementById('startModal');
+const startBtn = document.getElementById('startBtn');
+const playerInput = document.getElementById('playerInput');
+const displayName = document.getElementById('displayName');
+const boardEl = document.getElementById('board');
+const timerEl = document.getElementById('timer');
+const scoreCountEl = document.getElementById('scoreCount');
+const bestDisplayEl = document.getElementById('bestDisplay');
+const restartBtn = document.getElementById('restartBtn');
+const popupOverlay = document.getElementById('popupOverlay');
+const popupTitle = document.getElementById('popupTitle');
+const popupMsg = document.getElementById('popupMsg');
+const playAgainBtn = document.getElementById('playAgainBtn');
+const closePopupBtn = document.getElementById('closePopupBtn');
+
+/* ======================= AUDIO (WebAudio: 2-note sounds) ======================= */
+function ensureAudio(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+function playTwoNotes(freqs, duration=0.18, gap=0.12, type='sine'){
+  ensureAudio();
+  const now = audioCtx.currentTime;
+  freqs.forEach((f,i)=>{
+    const t = now + i*(duration + gap/2);
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type;
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.06, t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+duration);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t+duration+0.02);
+  });
+}
+function playCorrectSound(){
+  // C5 (523.25) then E5 (659.25)
+  playTwoNotes([523.25,659.25],0.18,0.06,'sine');
+}
+function playWrongSound(){
+  // E3 (164.81) then C3 (130.81)
+  playTwoNotes([164.81,130.81],0.18,0.06,'sine');
+}
+
+/* haptics */
+function vibrate(pattern){
+  if(navigator.vibrate) try{ navigator.vibrate(pattern); }catch(e){}
+}
+
+/* ======================= BUILD TILES ======================= */
+function buildTiles(){
+  const list = [];
+  for(let r=0;r<REPEAT_FULL_SET;r++){
+    for(const t of TYPES){
+      t.parts.forEach((p,i)=>{
+        list.push({ type:t.id, label:t.label, icon:t.icon, part:p, partIndex:i, isEmpty:false, cleared:false });
+      });
+    }
+  }
+  for(let i=0;i<EXTRA_EMPTY;i++){
+    list.push({ type:'empty', label:'Ô trống', icon:'✅', part:'', partIndex:0, isEmpty:true, cleared:false });
+  }
+  shuffle(list);
+  // safety fill
+  while(list.length < TOTAL) list.push({ type:'empty', label:'Ô trống', icon:'✅', part:'', partIndex:0, isEmpty:true, cleared:false });
+  return list.slice(0,TOTAL);
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
+
+/* ======================= RENDER ======================= */
+function renderBoard(){
+  boardEl.innerHTML = '';
+  tiles.forEach((t,i)=>{
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.setAttribute('data-index', i);
+    slot.tabIndex = 0;
+
+    if(t.cleared){
+      // show tick; cleared tiles keep position
+      const clr = document.createElement('div');
+      clr.className = 'cleared pop';
+      clr.innerHTML = `<div class="tick">✓</div>`;
+      slot.appendChild(clr);
+      boardEl.appendChild(slot);
+      return;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    const front = document.createElement('div'); front.className = 'face front'; front.innerHTML = `<div style="font-weight:900">?</div>`;
+    const back = document.createElement('div'); back.className = 'face back';
+    if(t.isEmpty){
+      back.innerHTML = `<div class="icon">${t.icon}</div><div class="partText">Ô trống</div><div class="label">${t.label}</div>`;
+    } else {
+      back.innerHTML = `<div class="icon">${t.icon}</div><div class="partText">${escapeHtml(t.part)}</div><div class="label">${escapeHtml(t.label)}</div>`;
+    }
+    card.appendChild(front); card.appendChild(back);
+    slot.appendChild(card);
+    boardEl.appendChild(slot);
+
+    // click and keyboard
+    slot.addEventListener('click', ()=>onSlotClick(i, card));
+    slot.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); onSlotClick(i, card); } });
+  });
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ======================= GAME LOGIC ======================= */
+function onSlotClick(index, cardEl){
+  const tile = tiles[index];
+  if(tile.cleared) return;
+  if(cardEl.classList.contains('flipped')) return;
+  if(flipped.length >= 3) return;
+
+  // make sure audio context resumed by user gesture
+  if(!audioCtx) try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){}
+
+  // flip
+  cardEl.classList.add('flipped');
+  flipped.push(index);
+
+  // if empty -> convert to cleared appearance (but flag as empty so doesn't count as match)
+  if(tile.isEmpty){
+    setTimeout(()=>{
+      tiles[index].cleared = true; // keep tick there
+      playCorrectSound(); vibrate(20);
+      renderBoard();
+      flipped = [];
+    }, 360);
+    return;
+  }
+
+  if(flipped.length === 3){
+    setTimeout(checkThree, 600);
+  }
+}
+
+function checkThree(){
+  const trio = flipped.slice();
+  const a = tiles[trio[0]], b = tiles[trio[1]], c = tiles[trio[2]];
+  const allNonEmpty = !a.isEmpty && !b.isEmpty && !c.isEmpty;
+
+  if(allNonEmpty && a.type === b.type && b.type === c.type){
+    // check that the three parts are 0,1,2 in any order
+    const parts = [a.partIndex, b.partIndex, c.partIndex].sort((x,y)=>x-y);
+    if(parts[0] === 0 && parts[1] === 1 && parts[2] === 2){
+      // correct match: animate vanish then mark cleared (tick)
+      trio.forEach(idx=>{
+        const slot = document.querySelector(`.slot[data-index='${idx}']`);
+        if(slot){
+          const card = slot.querySelector('.card');
+          if(card){
+            card.classList.add('flipped');
+            const back = card.querySelector('.back');
+            if(back) back.classList.add('vanish');
+          }
+        }
+      });
+      setTimeout(()=>{
+        trio.forEach(idx => tiles[idx].cleared = true);
+        correctMatches++;
+        updateScoreUI();
+        playCorrectSound(); vibrate([20,40,20]);
+        renderBoard();
+        flipped = [];
+        checkWin();
+      }, 440);
+      return;
+    }
+  }
+
+  // incorrect -> flip back
+  playWrongSound(); vibrate([60]);
+  trio.forEach((idx,i)=>{
+    setTimeout(()=>{
+      const card = document.querySelector(`.slot[data-index='${idx}'] .card`);
+      if(card) card.classList.remove('flipped');
+    }, 360 + i*80);
+  });
+  flipped = [];
+}
+
+/* ======================= TIMER & SCORE ======================= */
+function startTimer(){
+  clearInterval(timer);
+  remaining = 300;
+  timerEl.textContent = formatTime(remaining);
+  timer = setInterval(()=>{
+    remaining--;
+    timerEl.textContent = formatTime(remaining);
+    if(remaining <= 0){
+      clearInterval(timer);
+      showPopup(false);
+    }
+  },1000);
+}
+function formatTime(s){ const m = Math.floor(s/60).toString().padStart(2,'0'); const sec = (s%60).toString().padStart(2,'0'); return `${m}:${sec}`; }
+
+function updateScoreUI(){
+  scoreCountEl.textContent = correctMatches;
+}
+
+/* compute final score and store best */
+function computeScore(){
+  const timeBonus = Math.round((remaining / 300) * TIME_BONUS_MAX);
+  const score = correctMatches * MATCH_POINTS + timeBonus;
+  return { score, timeBonus };
+}
+
+/* ======================= WIN / POPUP / HIGHSCORE ======================= */
+function checkWin(){
+  // win when no non-empty tile left un-cleared
+  const left = tiles.filter(t => !t.cleared && !t.isEmpty).length;
+  if(left === 0){
+    clearInterval(timer);
+    showPopup(true);
+  }
+}
+
+function showPopup(won){
+  const popup = popupOverlay;
+  if(won){
+    const res = computeScore();
+    popupTitle.textContent = 'Bạn thắng! 🎉';
+    popupMsg.textContent = `Thời gian còn lại: ${formatTime(remaining)} | Ghép đúng: ${correctMatches} | Điểm: ${res.score} (Bonus: ${res.timeBonus})`;
+    saveHighscore(res.score);
+  } else {
+    popupTitle.textContent = 'Hết giờ ⏰';
+    popupMsg.textContent = `Hết giờ! Ghép đúng: ${correctMatches}. Thử lại nhé.`;
+  }
+  popup.style.display = 'flex';
+}
+
+function saveHighscore(score){
+  const key = 'matching3_high_v2';
+  const prev = JSON.parse(localStorage.getItem(key) || 'null');
+  const obj = { name: playerName || 'Người chơi', score: score, at: new Date().toISOString() };
+  if(!prev || obj.score > prev.score){
+    localStorage.setItem(key, JSON.stringify(obj));
+  }
+  updateBestDisplay();
+}
+
+function updateBestDisplay(){
+  const key = 'matching3_high_v2';
+  const prev = JSON.parse(localStorage.getItem(key) || 'null');
+  bestDisplayEl.textContent = prev ? `${prev.name} — ${prev.score}` : '—';
+}
+
+/* ======================= INIT / RESET ======================= */
+function initGame(){
+  tiles = buildTiles();
+  flipped = [];
+  correctMatches = 0;
+  updateScoreUI();
+  renderBoard();
+  startTimer();
+  updateBestDisplay();
+}
+
+function resetGameKeepName(){
+  // keep playerName and UI; rebuild tiles
+  popupOverlay.style.display = 'none';
+  tiles = buildTiles();
+  flipped = []; correctMatches = 0;
+  updateScoreUI();
+  renderBoard();
+  startTimer();
+}
+
+/* ======================= EVENTS binding ======================= */
+startBtn.addEventListener('click', ()=>{
+  playerName = (playerInput.value||'').trim() || 'Người chơi';
+  displayName.textContent = playerName;
+  // hide modal
+  startModal.style.display = 'none';
+  // resume audio context on user gesture
+  try{ if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if(audioCtx.state === 'suspended') audioCtx.resume(); }catch(e){}
+  initGame();
+});
+
+restartBtn.addEventListener('click', ()=> {
+  // simple reset keep name
+  resetGameKeepName();
+});
+
+playAgainBtn.addEventListener('click', ()=> {
+  popupOverlay.style.display = 'none';
+  resetGameKeepName();
+});
+
+closePopupBtn.addEventListener('click', ()=> {
+  popupOverlay.style.display = 'none';
+});
+
+/* allow Enter to start */
+playerInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') startBtn.click(); });
+
+/* show/hide start modal on load (modal visible by default) */
+window.addEventListener('load', ()=> {
+  updateBestDisplay();
+});
+
+/* ======================= Helpers ======================= */
+function buildTiles(){
+  const list = [];
+  for(let r=0;r<REPEAT_FULL_SET;r++){
+    for(const t of TYPES){
+      t.parts.forEach((p,i)=>{
+        list.push({ type:t.id, label:t.label, icon:t.icon, part:p, partIndex:i, isEmpty:false, cleared:false });
+      });
+    }
+  }
+  for(let i=0;i<EXTRA_EMPTY;i++){
+    list.push({ type:'empty', label:'Ô trống', icon:'✅', part:'', partIndex:0, isEmpty:true, cleared:false });
+  }
+  shuffle(list);
+  while(list.length < TOTAL) list.push({ type:'empty', label:'Ô trống', icon:'✅', part:'', partIndex:0, isEmpty:true, cleared:false });
+  return list.slice(0,TOTAL);
+}
+
+/* ====== small utility shuffle already above ====== */
+
+/* expose small helpers to console for debug (optional) */
+window.__matching3_debug = { buildTiles, playCorrectSound, playWrongSound };
+
+</script>
+</body>
+</html>
